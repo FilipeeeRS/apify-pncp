@@ -1,0 +1,19 @@
+{
+    "$schema": "https://apify.com/schemas/v1/actor.ide.json",
+    "actorSpecification": 1,
+    "name": "pncp-monitor",
+    "title": "PNCP Monitor: Licitações e Editais | Brazil Public Tenders",
+    "description": "Brazilian public tenders (licitações) from the official PNCP API: published or still open for proposals, filtered by modality, state, city, agency, keywords and value, with an incremental mode for daily alerts.",
+    "version": "0.1",
+    "buildTag": "latest",
+    "inputSchema": "./input_schema.json",
+    "outputSchema": "./output_schema.json",
+    "storages": {
+        "dataset": "./dataset_schema.json"
+    },
+    "dockerfile": "../Dockerfile",
+    "readme": "../README.md",
+    "defaultMemoryMbytes": 256,
+    "minMemoryMbytes": 256,
+    "maxMemoryMbytes": 1024
+}

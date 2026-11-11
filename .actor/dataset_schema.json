@@ -1,0 +1,120 @@
+{
+    "$schema": "https://apify.com/schemas/v1/dataset.ide.json",
+    "actorSpecification": 1,
+    "title": "Contratações (PNCP)",
+    "description": "One item per contratação (tender, direct contracting or auction) published on the PNCP. Dates are ISO 8601 in Brasília time (-03:00); values are numbers in reais (BRL). Original PNCP field names are given in each description.",
+    "fields": {
+        "type": "object",
+        "properties": {
+            "id": { "type": "string", "title": "PNCP control number", "description": "numeroControlePNCP: <agency CNPJ>-1-<sequence>/<year>. Unique and stable; use it to deduplicate.", "example": "94436342000100-1-000058/2026" },
+            "url": { "type": ["string", "null"], "title": "PNCP page", "description": "Public page of the contratação on the PNCP portal, with documents and items." },
+            "modalityCode": { "type": ["integer", "null"], "title": "Modality code", "description": "modalidadeId (1-13, PNCP domain table)." },
+            "modality": { "type": ["string", "null"], "title": "Modality", "description": "modalidadeNome, e.g. Pregão - Eletrônico." },
+            "disputeModeCode": { "type": ["integer", "null"], "title": "Dispute mode code", "description": "modoDisputaId." },
+            "disputeMode": { "type": ["string", "null"], "title": "Dispute mode", "description": "modoDisputaNome: Aberto, Fechado, Aberto-Fechado, Dispensa Com Disputa, Não se aplica..." },
+            "statusCode": { "type": ["integer", "null"], "title": "Status code", "description": "situacaoCompraId: 1 Divulgada, 2 Revogada, 3 Anulada, 4 Suspensa." },
+            "status": { "type": ["string", "null"], "title": "Status", "description": "situacaoCompraNome." },
+            "instrument": { "type": ["string", "null"], "title": "Instrument", "description": "tipoInstrumentoConvocatorioNome: Edital, Aviso de Contratação Direta..." },
+            "legalBasis": { "type": ["string", "null"], "title": "Legal basis", "description": "amparoLegal.nome, e.g. Lei 14.133/2021, Art. 28, I." },
+            "isPriceRegistry": { "type": ["boolean", "null"], "title": "Price registry (SRP)", "description": "srp: true when it is a registro de preços." },
+            "object": { "type": ["string", "null"], "title": "Object", "description": "objetoCompra: what is being bought. CPF and RG numbers are masked." },
+            "additionalInfo": { "type": ["string", "null"], "title": "Additional information", "description": "informacaoComplementar, masked like the object." },
+            "purchaseNumber": { "type": ["string", "null"], "title": "Purchase number", "description": "numeroCompra in the agency's own system." },
+            "processNumber": { "type": ["string", "null"], "title": "Process number", "description": "processo." },
+            "year": { "type": ["integer", "null"], "title": "Year", "description": "anoCompra." },
+            "sequence": { "type": ["integer", "null"], "title": "Sequence", "description": "sequencialCompra." },
+            "estimatedValue": { "type": ["number", "null"], "title": "Estimated value (R$)", "description": "valorTotalEstimado. null when not disclosed (orçamento sigiloso) or zero." },
+            "approvedValue": { "type": ["number", "null"], "title": "Approved value (R$)", "description": "valorTotalHomologado. null until there is a result." },
+            "publishedAt": { "type": ["string", "null"], "title": "Published at", "description": "dataPublicacaoPncp, ISO 8601 with -03:00." },
+            "publishedDate": { "type": ["string", "null"], "title": "Published date", "description": "Date part of publishedAt (YYYY-MM-DD), handy for spreadsheets." },
+            "updatedAt": { "type": ["string", "null"], "title": "Updated at", "description": "dataAtualizacaoGlobal." },
+            "proposalsOpenAt": { "type": ["string", "null"], "title": "Proposals open at", "description": "dataAberturaProposta. null for direct contracting without a dispute." },
+            "proposalsCloseAt": { "type": ["string", "null"], "title": "Proposals close at", "description": "dataEncerramentoProposta: the bidding deadline." },
+            "agencyCnpj": { "type": ["string", "null"], "title": "Agency CNPJ", "description": "orgaoEntidade.cnpj." },
+            "agencyName": { "type": ["string", "null"], "title": "Agency", "description": "orgaoEntidade.razaoSocial." },
+            "agencySphere": { "type": ["string", "null"], "title": "Sphere", "description": "Federal, Estadual, Municipal or Distrital (esferaId); null when not informed." },
+            "agencyBranch": { "type": ["string", "null"], "title": "Branch", "description": "Executivo, Legislativo or Judiciário (poderId); null when not informed." },
+            "unitCode": { "type": ["string", "null"], "title": "Unit code", "description": "unidadeOrgao.codigoUnidade." },
+            "unitName": { "type": ["string", "null"], "title": "Unit", "description": "unidadeOrgao.nomeUnidade: the buying unit." },
+            "state": { "type": ["string", "null"], "title": "UF", "description": "unidadeOrgao.ufSigla." },
+            "stateName": { "type": ["string", "null"], "title": "State", "description": "unidadeOrgao.ufNome." },
+            "city": { "type": ["string", "null"], "title": "City", "description": "unidadeOrgao.municipioNome." },
+            "cityIbgeCode": { "type": ["string", "null"], "title": "City IBGE code", "description": "unidadeOrgao.codigoIbge (7 digits)." },
+            "sourceSystem": { "type": ["string", "null"], "title": "Source system", "description": "usuarioNome: the procurement platform that published it (Compras.gov.br, BLL, Betha...)." },
+            "sourceUrl": { "type": ["string", "null"], "title": "Link in the source system", "description": "linkSistemaOrigem: where the bidding happens." },
+            "electronicProcessUrl": { "type": ["string", "null"], "title": "Electronic process link", "description": "linkProcessoEletronico." },
+            "budgetSources": { "type": "array", "items": { "type": "string" }, "title": "Budget sources", "description": "fontesOrcamentarias[].nome." },
+            "matchedKeywords": { "type": "array", "items": { "type": "string" }, "title": "Matched keywords", "description": "Which of your keywords were found in the object." },
+            "collectedAt": { "type": "string", "title": "Collected at", "description": "When the Actor read the record (UTC)." }
+        },
+        "required": ["id", "collectedAt"]
+    },
+    "views": {
+        "overview": {
+            "title": "Overview",
+            "description": "The columns most people need.",
+            "transformation": {
+                "fields": ["publishedDate", "modality", "object", "estimatedValue", "agencyName", "city", "state", "proposalsCloseAt", "status", "url"]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "publishedDate": { "label": "Published", "format": "date" },
+                    "modality": { "label": "Modality", "format": "text" },
+                    "object": { "label": "Object", "format": "text" },
+                    "estimatedValue": { "label": "Estimated (R$)", "format": "number" },
+                    "agencyName": { "label": "Agency", "format": "text" },
+                    "city": { "label": "City", "format": "text" },
+                    "state": { "label": "UF", "format": "text" },
+                    "proposalsCloseAt": { "label": "Proposals close", "format": "date" },
+                    "status": { "label": "Status", "format": "text" },
+                    "url": { "label": "PNCP", "format": "link" }
+                }
+            }
+        },
+        "bidding": {
+            "title": "Bidding details",
+            "description": "Deadlines, dispute mode and where to bid.",
+            "transformation": {
+                "fields": ["object", "modality", "disputeMode", "proposalsOpenAt", "proposalsCloseAt", "estimatedValue", "isPriceRegistry", "sourceSystem", "sourceUrl", "matchedKeywords", "url"]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "object": { "label": "Object", "format": "text" },
+                    "modality": { "label": "Modality", "format": "text" },
+                    "disputeMode": { "label": "Dispute", "format": "text" },
+                    "proposalsOpenAt": { "label": "Opens", "format": "date" },
+                    "proposalsCloseAt": { "label": "Closes", "format": "date" },
+                    "estimatedValue": { "label": "Estimated (R$)", "format": "number" },
+                    "isPriceRegistry": { "label": "SRP", "format": "boolean" },
+                    "sourceSystem": { "label": "Platform", "format": "text" },
+                    "sourceUrl": { "label": "Bid here", "format": "link" },
+                    "matchedKeywords": { "label": "Keywords", "format": "array" },
+                    "url": { "label": "PNCP", "format": "link" }
+                }
+            }
+        },
+        "agencies": {
+            "title": "Agencies",
+            "description": "Who is buying.",
+            "transformation": {
+                "fields": ["agencyName", "agencyCnpj", "agencySphere", "agencyBranch", "unitName", "city", "cityIbgeCode", "state", "id"]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "agencyName": { "label": "Agency", "format": "text" },
+                    "agencyCnpj": { "label": "CNPJ", "format": "text" },
+                    "agencySphere": { "label": "Sphere", "format": "text" },
+                    "agencyBranch": { "label": "Branch", "format": "text" },
+                    "unitName": { "label": "Unit", "format": "text" },
+                    "city": { "label": "City", "format": "text" },
+                    "cityIbgeCode": { "label": "IBGE", "format": "text" },
+                    "state": { "label": "UF", "format": "text" },
+                    "id": { "label": "PNCP id", "format": "text" }
+                }
+            }
+        }
+    }
+}

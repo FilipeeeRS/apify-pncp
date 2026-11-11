@@ -1,0 +1,9 @@
+[project]
+name = "pncp-monitor"
+version = "0.1.0"
+description = "Apify Actor: Brazilian public procurement (PNCP) monitor with filters and incremental mode."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

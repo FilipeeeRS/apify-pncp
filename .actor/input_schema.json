@@ -1,0 +1,167 @@
+{
+    "$schema": "https://apify.com/schemas/v1/input.ide.json",
+    "title": "PNCP Monitor input",
+    "description": "Pick what to fetch (published in a period, or still open for proposals), narrow it down, and set a result limit. For a daily alert, turn on incremental mode and schedule the Actor.",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "mode": {
+            "title": "What to fetch",
+            "type": "string",
+            "description": "<b>Published in a period</b>: every contratação published on the PNCP in the date window below (includes direct contracting). <b>Open for proposals</b>: tenders whose proposal period is still open today, the ones a supplier can still bid on.",
+            "editor": "select",
+            "enum": ["published", "openProposals"],
+            "enumTitles": ["Published in a period", "Open for proposals now"],
+            "default": "published",
+            "prefill": "published",
+            "sectionCaption": "What to fetch"
+        },
+        "lastDays": {
+            "title": "Last N days (published mode)",
+            "type": "integer",
+            "description": "Publication window: from N days ago up to today, Brasília time. 1 = yesterday and today. Ignored when 'Published from' is set.",
+            "minimum": 0,
+            "maximum": 3650,
+            "default": 1,
+            "prefill": 1
+        },
+        "dateFrom": {
+            "title": "Published from (optional)",
+            "type": "string",
+            "description": "Start of the publication window (YYYY-MM-DD). Overrides 'Last N days'.",
+            "editor": "datepicker",
+            "dateType": "absolute",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "dateTo": {
+            "title": "Published until (optional)",
+            "type": "string",
+            "description": "End of the publication window (YYYY-MM-DD). Default: today.",
+            "editor": "datepicker",
+            "dateType": "absolute",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "proposalDeadlineTo": {
+            "title": "Proposal deadline up to (open mode, optional)",
+            "type": "string",
+            "description": "Open-for-proposals mode only: keep tenders whose proposal deadline is on or before this date (YYYY-MM-DD). Default: one year from today, which means every open tender.",
+            "editor": "datepicker",
+            "dateType": "absolute",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "modalities": {
+            "title": "Modalities",
+            "type": "array",
+            "description": "PNCP procurement modalities. Leave empty for all 13 (each one is a separate API query, so fewer is faster).",
+            "editor": "select",
+            "items": {
+                "type": "string",
+                "enum": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"],
+                "enumTitles": [
+                    "1 - Leilão eletrônico",
+                    "2 - Diálogo competitivo",
+                    "3 - Concurso",
+                    "4 - Concorrência eletrônica",
+                    "5 - Concorrência presencial",
+                    "6 - Pregão eletrônico",
+                    "7 - Pregão presencial",
+                    "8 - Dispensa de licitação",
+                    "9 - Inexigibilidade",
+                    "10 - Manifestação de interesse",
+                    "11 - Pré-qualificação",
+                    "12 - Credenciamento",
+                    "13 - Leilão presencial"
+                ]
+            },
+            "uniqueItems": true,
+            "default": ["6", "8"],
+            "prefill": ["6", "8"],
+            "sectionCaption": "Where and who"
+        },
+        "states": {
+            "title": "States (UF)",
+            "type": "array",
+            "description": "States of the buying agency's unit. Empty = the whole country.",
+            "editor": "select",
+            "items": {
+                "type": "string",
+                "enum": ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"]
+            },
+            "uniqueItems": true
+        },
+        "municipalityIbgeCodes": {
+            "title": "Municipalities (IBGE codes)",
+            "type": "array",
+            "description": "7-digit IBGE codes of the buying unit's city, for example 3550308 for São Paulo. When set, the state list is not used for the query.",
+            "editor": "stringList"
+        },
+        "agencyCnpjs": {
+            "title": "Agencies (CNPJ)",
+            "type": "array",
+            "description": "CNPJ of the buying agency (órgão/entidade), with or without punctuation.",
+            "editor": "stringList"
+        },
+        "keywords": {
+            "title": "Keywords in the object",
+            "type": "array",
+            "description": "Keep only contratações whose object mentions at least one of these words or phrases. Case- and accent-insensitive, partial words match (notebook matches notebooks).",
+            "editor": "stringList",
+            "sectionCaption": "What matters"
+        },
+        "excludeKeywords": {
+            "title": "Exclude keywords",
+            "type": "array",
+            "description": "Drop contratações whose object mentions any of these.",
+            "editor": "stringList"
+        },
+        "minValue": {
+            "title": "Minimum estimated value (R$)",
+            "type": "integer",
+            "description": "Estimated total value in reais. With a value filter, contratações that do not disclose a value (orçamento sigiloso) are left out.",
+            "minimum": 0
+        },
+        "maxValue": {
+            "title": "Maximum estimated value (R$)",
+            "type": "integer",
+            "description": "Estimated total value in reais.",
+            "minimum": 0
+        },
+        "maxResults": {
+            "title": "Maximum results",
+            "type": "integer",
+            "description": "Stop after delivering this many contratações. You pay per result delivered, never for records that were filtered out.",
+            "minimum": 1,
+            "default": 20,
+            "prefill": 20,
+            "sectionCaption": "Results and incremental mode"
+        },
+        "incremental": {
+            "title": "Incremental mode (only new results)",
+            "type": "boolean",
+            "description": "Remember what this monitor already delivered and return only contratações that are new since the last run. Use it with a schedule. The memory lives in a key-value store named 'pncp-monitor-state' in your account.",
+            "default": false
+        },
+        "monitorName": {
+            "title": "Monitor name",
+            "type": "string",
+            "description": "Incremental mode keeps one memory per monitor name. Use a different name for each set of filters you schedule.",
+            "default": "default",
+            "editor": "textfield"
+        },
+        "resetState": {
+            "title": "Forget what was delivered",
+            "type": "boolean",
+            "description": "Start this monitor from scratch: deliver everything that matches again and rebuild its memory.",
+            "default": false
+        },
+        "maxApiPages": {
+            "title": "Maximum API pages",
+            "type": "integer",
+            "description": "Safety cap on PNCP pages read per run (50 records each, about 3 s per page because the portal limits request rates). Raise it for wide windows or broad keyword searches.",
+            "minimum": 1,
+            "maximum": 100000,
+            "default": 300,
+            "sectionCaption": "Advanced"
+        }
+    }
+}
