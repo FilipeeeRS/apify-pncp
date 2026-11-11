@@ -57,6 +57,17 @@ def test_rate_limit_html_page_is_retried_with_long_waits(clock):
     assert client.requests == 3 and client.retries == 2
 
 
+def test_a_403_from_the_waf_is_retried_like_a_rate_limit(clock):
+    client = make_client(clock, [httpx.Response(403, text="<html>blocked</html>"), ok([])])
+    get(client)
+    assert 20.0 in clock.sleeps
+
+
+def test_unexpected_status_is_an_error(clock):
+    with pytest.raises(c.PncpError, match="418"):
+        get(make_client(clock, [httpx.Response(418)]))
+
+
 def test_retry_after_header_is_honoured(clock):
     client = make_client(clock, [httpx.Response(429, headers={"Retry-After": "120"}), ok([])])
     get(client)

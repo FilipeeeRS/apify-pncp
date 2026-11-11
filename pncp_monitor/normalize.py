@@ -39,8 +39,8 @@ def normalize(raw: Mapping[str, Any], collected_at: str) -> dict[str, Any]:
         "instrument": _text(raw.get("tipoInstrumentoConvocatorioNome")),
         "legalBasis": _text(legal.get("nome")),
         "isPriceRegistry": raw.get("srp") if isinstance(raw.get("srp"), bool) else None,
-        "object": mask_personal_data(_text(raw.get("objetoCompra"))),
-        "additionalInfo": mask_personal_data(_text(raw.get("informacaoComplementar"))),
+        "object": mask_personal_data(_squash(raw.get("objetoCompra"))),
+        "additionalInfo": mask_personal_data(_squash(raw.get("informacaoComplementar"))),
         "purchaseNumber": mask_personal_data(_text(raw.get("numeroCompra"))),
         "processNumber": mask_personal_data(_text(raw.get("processo"))),
         "year": _int(raw.get("anoCompra")),
@@ -57,15 +57,15 @@ def normalize(raw: Mapping[str, Any], collected_at: str) -> dict[str, Any]:
         "agencySphere": SPHERES.get(_text(agency.get("esferaId")) or ""),
         "agencyBranch": BRANCHES.get(_text(agency.get("poderId")) or ""),
         "unitCode": _text(unit.get("codigoUnidade")),
-        "unitName": _text(unit.get("nomeUnidade")),
+        "unitName": _squash(unit.get("nomeUnidade")),
         "state": _text(unit.get("ufSigla")),
         "stateName": _text(unit.get("ufNome")),
         "city": _text(unit.get("municipioNome")),
         "cityIbgeCode": _text(unit.get("codigoIbge")),
         # usuarioNome is the procurement system that published the record (Compras.gov.br, BLL, Betha...), not a person.
         "sourceSystem": _text(raw.get("usuarioNome")),
-        "sourceUrl": _text(raw.get("linkSistemaOrigem")),
-        "electronicProcessUrl": _text(raw.get("linkProcessoEletronico")),
+        "sourceUrl": to_url(raw.get("linkSistemaOrigem")),
+        "electronicProcessUrl": to_url(raw.get("linkProcessoEletronico")),
         "budgetSources": [
             name for name in (_text(item.get("nome")) for item in raw.get("fontesOrcamentarias") or [] if isinstance(item, dict)) if name
         ],
@@ -81,6 +81,19 @@ def portal_url(control_number: str | None, cnpj: Any, year: Any, sequence: Any) 
     if cnpj and year and sequence:
         return PORTAL_URL.format(cnpj=cnpj, year=year, sequence=int(sequence))
     return None
+
+
+_HOST = re.compile(r"^(?:www\.)?[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+(?::\d+)?(?:[/?#]\S*)?$", re.IGNORECASE)
+
+
+def to_url(value: Any) -> str | None:
+    """Agencies type these links by hand: 'contratosgov.com.br/...', 'Link Não Informado', ''. Keep only real URLs."""
+    text = _text(value)
+    if not text or " " in text:
+        return None
+    if re.match(r"^https?://\S+$", text, re.IGNORECASE):
+        return text
+    return f"https://{text}" if _HOST.match(text) else None
 
 
 def to_iso(value: Any) -> str | None:
@@ -101,6 +114,12 @@ def _text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _squash(value: Any) -> str | None:
+    """Free text with its line breaks and runs of spaces collapsed to single spaces."""
+    text = _text(value)
+    return " ".join(text.split()) if text else None
 
 
 def _int(value: Any) -> int | None:

@@ -1,18 +1,23 @@
-"""Crawl orchestration: streams -> pages -> normalize -> filter -> dedupe -> deliver -> remember.
+"""Crawl orchestration: queries -> pages -> normalize -> filter -> dedupe -> deliver -> remember.
 
-Records come in the API's order (oldest publication first). With `incremental` on, a record is remembered only after
-it has been pushed, and the state is saved after every page, so a run that stops halfway (result cap, the user's cost
-limit, an API outage) resumes in the next run exactly where it stopped.
+Order. The API returns oldest publications first. A one-off run reads each query newest first (page 1 tells how many
+pages there are, then the last page down), so a small `maxResults` gets the latest records. Incremental runs keep the
+API order, so a run cut short by `maxResults` or the user's cost limit is continued by the next run.
+
+Safety. In incremental mode a record is remembered only after it is pushed, and the state is saved (merged with what
+a parallel run may have saved) after every page. The ids delivered by this run are also kept as run progress, so a
+run that the platform migrates or resurrects does not deliver and charge the same records twice. A query that keeps
+failing is skipped and reported; two failed queries in a row mean the PNCP is down and the run stops.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 from typing import Any, Protocol
 
-from .client import PAGE_SIZE, Page, PncpClient, PncpUnavailable
+from .client import PAGE_SIZE, Page, PncpClient, PncpError, PncpRejected, PncpUnavailable
 from .filters import RecordFilter
 from .normalize import normalize
 from .settings import MODE_PUBLISHED, Settings, build_streams
@@ -25,6 +30,9 @@ STOP_MAX_RESULTS = "max_results"
 STOP_MAX_CHARGE = "max_charge"
 STOP_MAX_PAGES = "max_api_pages"
 STOP_UPSTREAM = "upstream_error"
+STOP_REJECTED = "rejected"
+FAILED_STOPS = (STOP_UPSTREAM, STOP_REJECTED)
+MAX_CONSECUTIVE_FAILURES = 2
 
 
 class Sink(Protocol):
@@ -48,8 +56,9 @@ class Summary:
     mode: str
     window: dict[str, str | None]
     incremental: bool
-    streams: int
-    streams_done: int = 0
+    queries: int
+    queries_done: int = 0
+    failed_queries: list[str] = field(default_factory=list)
     api_pages: int = 0
     api_requests: int = 0
     scanned: int = 0
@@ -63,6 +72,10 @@ class Summary:
     state_size_before: int = 0
     state_size_after: int = 0
 
+    @property
+    def failed(self) -> bool:
+        return self.stop_reason in FAILED_STOPS
+
     def to_dict(self) -> dict[str, Any]:
         return {**asdict(self), "complete": self.stop_reason == STOP_COMPLETED}
 
@@ -74,8 +87,10 @@ class Summary:
         notes = {
             STOP_MAX_RESULTS: " Stopped at maxResults.",
             STOP_MAX_CHARGE: " Stopped at your maximum cost per run.",
-            STOP_MAX_PAGES: " Stopped at maxApiPages; narrow the filters or raise the limit.",
+            STOP_MAX_PAGES: " Stopped at maxApiPages; narrow the filters or raise the limit."
+            + (" Incremental runs start reading from the first page again, so this cap must cover the whole window." if self.incremental else ""),
             STOP_UPSTREAM: f" The PNCP API failed: {self.error}",
+            STOP_REJECTED: f" {self.error}",
         }
         line += notes.get(self.stop_reason, "")
         if self.delivered == 0 and self.stop_reason == STOP_COMPLETED:
@@ -95,7 +110,10 @@ class Crawler:
         self.key = state_key(settings)
         self.state = IncrementalState()
         self.seen: set[str] = set()
+        self.delivered_ids: list[str] = []
+        self._already_this_run: set[str] = set()
         self.pages_left = settings.max_api_pages
+        self.newest_first = not settings.incremental
         if settings.mode == MODE_PUBLISHED:
             assert settings.date_from and settings.date_to
             self.path = "/contratacoes/publicacao"
@@ -106,56 +124,101 @@ class Crawler:
             self.path = "/contratacoes/proposta"
             self.base_params = {"dataFinal": f"{settings.proposal_deadline_to:%Y%m%d}"}
             window = {"proposalDeadlineTo": settings.proposal_deadline_to.isoformat()}
-        self.summary = Summary(mode=settings.mode, window=window, incremental=settings.incremental, streams=len(self.streams))
+        self.summary = Summary(mode=settings.mode, window=window, incremental=settings.incremental, queries=len(self.streams))
+
+    # Run progress, for platform migrations: the ids this run already delivered.
+    def progress(self) -> dict[str, Any]:
+        return {"version": 1, "deliveredIds": list(self.delivered_ids)}
+
+    def restore(self, progress: Any) -> None:
+        if isinstance(progress, dict) and isinstance(progress.get("deliveredIds"), list):
+            ids = [i for i in progress["deliveredIds"] if isinstance(i, str)]
+            self.delivered_ids = ids
+            self._already_this_run = set(ids)
+            self.summary.delivered = len(ids)
+            if ids:
+                log.info("Resuming after a restart: %d results were already delivered by this run", len(ids))
 
     async def run(self) -> Summary:
         settings, summary = self.settings, self.summary
         if settings.incremental and not settings.reset_state:
             self.state = IncrementalState.from_json(await self.sink.load_state(self.key))
         summary.state_size_before = len(self.state)
+        consecutive_failures = 0
         try:
             for index, stream in enumerate(self.streams, start=1):
-                stop = await self._crawl_stream(index, stream)
+                label = ", ".join(f"{key}={value}" for key, value in stream.items())
+                try:
+                    stop = await self._crawl_stream(index, label, stream)
+                except PncpUnavailable as exc:
+                    consecutive_failures += 1
+                    summary.failed_queries.append(label)
+                    summary.stop_reason, summary.error = STOP_UPSTREAM, str(exc)
+                    log.error("Query %d/%d (%s) failed and was skipped: %s", index, len(self.streams), label, exc)
+                    if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                        log.error("Two queries in a row failed: the PNCP looks down, stopping.")
+                        break
+                    continue
+                consecutive_failures = 0
+                summary.queries_done += 1
                 if stop:
                     break
-                summary.streams_done = index
-        except PncpUnavailable as exc:
-            summary.stop_reason = STOP_UPSTREAM
-            summary.error = str(exc)
+        except PncpRejected as exc:
+            summary.stop_reason, summary.error = STOP_REJECTED, str(exc)
+        except PncpError as exc:
+            summary.stop_reason, summary.error = STOP_UPSTREAM, str(exc)
         finally:
             summary.api_requests = self.client.requests
+            if summary.failed_queries and summary.stop_reason not in FAILED_STOPS:
+                summary.stop_reason = STOP_UPSTREAM  # a cap was reached after a query had been skipped
+            if summary.failed_queries:
+                summary.error = f"{len(summary.failed_queries)} quer{'y' if len(summary.failed_queries) == 1 else 'ies'} failed ({'; '.join(summary.failed_queries)}). Last error: {summary.error}"
             if settings.incremental:
-                self.state.prune(self._keep_from())
-                await self.sink.save_state(self.key, self.state.to_json(self.collected_at))
+                await self._save_state()
             summary.state_size_after = len(self.state)
         return summary
 
-    async def _crawl_stream(self, index: int, stream: dict[str, Any]) -> bool:
+    async def _crawl_stream(self, index: int, label: str, stream: dict[str, Any]) -> bool:
         """Read every page of one query. Return True when the whole run has to stop."""
         params = {**self.base_params, **stream}
-        label = ", ".join(f"{key}={value}" for key, value in stream.items())
-        page_number = 1
-        while True:
-            if self.pages_left <= 0:
-                self.summary.stop_reason = STOP_MAX_PAGES
+        first = await self._fetch(params, 1)
+        if first is None:
+            return True
+        log.info("Query %d/%d (%s): %s records", index, len(self.streams), label, first.total_records or 0)
+        total = first.total_pages or (1 if first.items else 0)
+        if not self.newest_first:
+            page = first
+            for number in range(1, total + 1):
+                if number > 1:
+                    page = await self._fetch(params, number)
+                    if page is None:
+                        return True
+                if await self._handle_page(page, index, number):
+                    return True
+                if not page.items:
+                    break
+            return False
+        for number in range(total, 1, -1):
+            page = await self._fetch(params, number)
+            if page is None:
                 return True
-            self.pages_left -= 1
-            page = await self.client.get_page(self.path, {**params, "pagina": page_number, "tamanhoPagina": PAGE_SIZE})
-            self.summary.api_pages += 1
-            if page_number == 1:
-                log.info("Query %d/%d (%s): %s records", index, len(self.streams), label, page.total_records or 0)
-            if await self._handle_page(page):
+            if await self._handle_page(page, index, number):
                 return True
-            if self.summary.api_pages % 5 == 1:
-                await self.sink.status(f"Query {index}/{len(self.streams)}, page {page_number}: {self.summary.delivered} results so far")
-            if not page.items or (page.total_pages is not None and page_number >= page.total_pages):
-                return False
-            page_number += 1
+        return await self._handle_page(first, index, 1)
 
-    async def _handle_page(self, page: Page) -> bool:
+    async def _fetch(self, params: dict[str, Any], number: int) -> Page | None:
+        if self.pages_left <= 0:
+            self.summary.stop_reason = STOP_MAX_PAGES
+            return None
+        self.pages_left -= 1
+        self.summary.api_pages += 1
+        return await self.client.get_page(self.path, {**params, "pagina": number, "tamanhoPagina": PAGE_SIZE})
+
+    async def _handle_page(self, page: Page, index: int, number: int) -> bool:
         settings, summary = self.settings, self.summary
+        items = list(reversed(page.items)) if self.newest_first else page.items
         batch: list[dict[str, Any]] = []
-        for raw in page.items:
+        for raw in items:
             summary.scanned += 1
             try:
                 record = normalize(raw, self.collected_at)
@@ -171,6 +234,8 @@ class Crawler:
                 summary.duplicates += 1
                 continue
             self.seen.add(record_id)
+            if record_id in self._already_this_run:  # delivered before a migration or restart of this same run
+                continue
             kept, matched = self.filter.check(record)
             if not kept:
                 summary.filtered_out += 1
@@ -190,10 +255,13 @@ class Crawler:
         if batch:
             limit_reached = await self.sink.push(batch)
             summary.delivered += len(batch)
+            self.delivered_ids.extend(record["id"] for record in batch)
             if settings.incremental:
                 for record in batch:
                     self.state.add(record["id"], self._group(record))
-                await self.sink.save_state(self.key, self.state.to_json(self.collected_at))
+                await self._save_state()
+        if summary.api_pages % 5 == 1:
+            await self.sink.status(f"Query {index}/{len(self.streams)}, page {number}: {summary.delivered} results so far")
 
         if summary.delivered >= settings.max_results:
             summary.stop_reason = STOP_MAX_RESULTS
@@ -202,6 +270,14 @@ class Crawler:
             summary.stop_reason = STOP_MAX_CHARGE
             return True
         return False
+
+    async def _save_state(self) -> None:
+        """Merge with the stored state first, so two runs of the same monitor do not erase each other's ids."""
+        stored = IncrementalState.from_json(await self.sink.load_state(self.key)) if not self.settings.reset_state else None
+        if stored is not None:
+            self.state.merge(stored)
+        self.state.prune(self._keep_from())
+        await self.sink.save_state(self.key, self.state.to_json(self.collected_at))
 
     def _group(self, record: dict[str, Any]) -> str:
         """State is grouped by publication date (published mode) or proposal deadline (open mode) for pruning."""

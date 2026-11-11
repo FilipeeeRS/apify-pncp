@@ -41,7 +41,7 @@
             "city": { "type": ["string", "null"], "title": "City", "description": "unidadeOrgao.municipioNome." },
             "cityIbgeCode": { "type": ["string", "null"], "title": "City IBGE code", "description": "unidadeOrgao.codigoIbge (7 digits)." },
             "sourceSystem": { "type": ["string", "null"], "title": "Source system", "description": "usuarioNome: the procurement platform that published it (Compras.gov.br, BLL, Betha...)." },
-            "sourceUrl": { "type": ["string", "null"], "title": "Link in the source system", "description": "linkSistemaOrigem: where the bidding happens." },
+            "sourceUrl": { "type": ["string", "null"], "title": "Link in the source system", "description": "linkSistemaOrigem: the procurement platform page, when the agency provides a valid link (https:// added when missing)." },
             "electronicProcessUrl": { "type": ["string", "null"], "title": "Electronic process link", "description": "linkProcessoEletronico." },
             "budgetSources": { "type": "array", "items": { "type": "string" }, "title": "Budget sources", "description": "fontesOrcamentarias[].nome." },
             "matchedKeywords": { "type": "array", "items": { "type": "string" }, "title": "Matched keywords", "description": "Which of your keywords were found in the object." },
@@ -89,7 +89,7 @@
                     "estimatedValue": { "label": "Estimated (R$)", "format": "number" },
                     "isPriceRegistry": { "label": "SRP", "format": "boolean" },
                     "sourceSystem": { "label": "Platform", "format": "text" },
-                    "sourceUrl": { "label": "Bid here", "format": "link" },
+                    "sourceUrl": { "label": "Platform link", "format": "link" },
                     "matchedKeywords": { "label": "Keywords", "format": "array" },
                     "url": { "label": "PNCP", "format": "link" }
                 }

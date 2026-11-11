@@ -44,7 +44,7 @@
         "proposalDeadlineTo": {
             "title": "Proposal deadline up to (open mode, optional)",
             "type": "string",
-            "description": "Open-for-proposals mode only: keep tenders whose proposal deadline is on or before this date (YYYY-MM-DD). Default: one year from today, which means every open tender.",
+            "description": "Open-for-proposals mode only: keep tenders whose proposal deadline is on or before this date (YYYY-MM-DD). Default: ten years from today, which means every open tender.",
             "editor": "datepicker",
             "dateType": "absolute",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
@@ -52,7 +52,7 @@
         "modalities": {
             "title": "Modalities",
             "type": "array",
-            "description": "PNCP procurement modalities. Leave empty for all 13 (each one is a separate API query, so fewer is faster).",
+            "description": "PNCP procurement modalities. Default: pregão eletrônico and dispensa. Clear the list for all 13 (each one is a separate API query, so fewer is faster).",
             "editor": "select",
             "items": {
                 "type": "string",
@@ -77,6 +77,18 @@
             "default": ["6", "8"],
             "prefill": ["6", "8"],
             "sectionCaption": "Where and who"
+        },
+        "statuses": {
+            "title": "Status",
+            "type": "array",
+            "description": "PNCP status of the contratação. Leave unset for the default: only 'Divulgada' (active) in open-for-proposals mode, any status in published mode.",
+            "editor": "select",
+            "items": {
+                "type": "string",
+                "enum": ["1", "2", "3", "4"],
+                "enumTitles": ["Divulgada no PNCP (active)", "Revogada (revoked)", "Anulada (annulled)", "Suspensa (suspended)"]
+            },
+            "uniqueItems": true
         },
         "states": {
             "title": "States (UF)",
@@ -104,7 +116,7 @@
         "keywords": {
             "title": "Keywords in the object",
             "type": "array",
-            "description": "Keep only contratações whose object mentions at least one of these words or phrases. Case- and accent-insensitive, partial words match (notebook matches notebooks).",
+            "description": "Keep only contratações whose object mentions at least one of these words or phrases. Case-, accent- and hyphen-insensitive, matched at the start of a word: notebook matches notebooks, ar condicionado matches AR-CONDICIONADO, locação does not match realocação.",
             "editor": "stringList",
             "sectionCaption": "What matters"
         },
@@ -144,7 +156,7 @@
         "monitorName": {
             "title": "Monitor name",
             "type": "string",
-            "description": "Incremental mode keeps one memory per monitor name. Use a different name for each set of filters you schedule.",
+            "description": "Incremental mode keeps one memory per monitor name. Use a different name for each set of filters you schedule, and do not run the same monitor twice at the same time.",
             "default": "default",
             "editor": "textfield"
         },
@@ -157,7 +169,7 @@
         "maxApiPages": {
             "title": "Maximum API pages",
             "type": "integer",
-            "description": "Safety cap on PNCP pages read per run (50 records each, about 3 s per page because the portal limits request rates). Raise it for wide windows or broad keyword searches.",
+            "description": "Safety cap on PNCP pages read per run (50 records each, about 3 s per page because the portal limits request rates). Raise it for wide windows or broad keyword searches. In incremental mode it must cover the whole window, because each run reads from the first page again.",
             "minimum": 1,
             "maximum": 100000,
             "default": 300,

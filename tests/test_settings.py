@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -12,7 +12,13 @@ def test_defaults_are_small_and_always_have_data():
     assert s.mode == "published"
     assert (s.date_from, s.date_to) == (date(2026, 11, 9), TODAY)  # last 1 day = yesterday and today
     assert s.max_results == 20 and not s.incremental and s.max_api_pages == 300
-    assert len(build_streams(s)) == 13  # empty modality list = all 13
+    assert s.modalities == (6, 8) and s.statuses == ()  # same defaults as the input schema
+    assert len(build_streams(s)) == 2
+
+
+def test_explicit_empty_modalities_mean_all_13():
+    assert len(build_streams(parse_settings({"modalities": []}, TODAY))) == 13
+    assert parse_settings({"modalities": None}, TODAY).modalities == (6, 8)
 
 
 def test_explicit_window_wins_over_last_days():
@@ -20,9 +26,12 @@ def test_explicit_window_wins_over_last_days():
     assert (s.date_from, s.date_to) == (date(2026, 11, 1), date(2026, 11, 5))
 
 
-def test_open_proposals_mode_defaults_to_a_year_ahead():
+def test_open_proposals_mode_reaches_every_open_tender_and_only_active_ones():
     s = parse_settings({"mode": "openProposals"}, TODAY)
-    assert s.date_from is None and s.proposal_deadline_to == date(2027, 11, 10)
+    assert s.date_from is None and s.proposal_deadline_to == TODAY + timedelta(days=3650)
+    assert s.statuses == (1,)  # suspended or revoked tenders cannot be bid on
+    assert parse_settings({"mode": "openProposals", "statuses": []}, TODAY).statuses == ()
+    assert parse_settings({"statuses": ["1", "4"]}, TODAY).statuses == (1, 4)
 
 
 def test_lists_are_cleaned_and_validated():
@@ -64,7 +73,8 @@ def test_alphanumeric_cnpj_is_accepted():
         ({"agencyCnpjs": ["94436342000101"]}, "CNPJ"),
         ({"minValue": 10, "maxValue": 5}, "minValue"),
         ({"maxResults": 0}, "maxResults"),
-        ({"states": ["SP", "RJ", "MG", "BA", "PR", "RS", "SC", "GO", "PE", "CE", "PA", "AM", "ES", "MT", "MS", "DF"]}, "queries"),
+        ({"statuses": ["9"]}, "status"),
+        ({"modalities": [], "states": ["SP", "RJ", "MG", "BA", "PR", "RS", "SC", "GO", "PE", "CE", "PA", "AM", "ES", "MT", "MS", "DF"]}, "queries"),
     ],
 )
 def test_invalid_input_is_explained(raw, message):

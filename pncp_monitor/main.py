@@ -5,15 +5,16 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from apify import Actor
+from apify import Actor, Event
 
-from .client import PncpClient, PncpRejected, make_http_client
+from .client import PncpClient, make_http_client
 from .normalize import BRT
-from .runner import STOP_UPSTREAM, Crawler, Summary
+from .runner import Crawler, Summary
 from .settings import InputError, Settings, parse_settings
 
 STATE_STORE = "pncp-monitor-state"  # named store: it outlives the run, so schedules can remember what they delivered
 DATASET_ITEM_EVENT = "apify-default-dataset-item"  # the synthetic pay-per-event event: one charge per dataset item
+PROGRESS_KEY = "RUN_PROGRESS"  # ids delivered by this run, read back if the platform migrates or restarts it
 
 
 class ApifySink:
@@ -57,22 +58,29 @@ async def main() -> None:
                 today=now.date(),
                 collected_at=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
             )
+            if Actor.is_at_home():  # a platform run keeps its default store across migrations; local runs do not resume
+                crawler.restore(await Actor.get_value(PROGRESS_KEY))
+
+            async def save_progress(_event_data: Any = None) -> None:
+                await Actor.set_value(PROGRESS_KEY, crawler.progress())
+
+            Actor.on(Event.PERSIST_STATE, save_progress)
+            Actor.on(Event.MIGRATING, save_progress)
             try:
                 summary = await crawler.run()
-            except PncpRejected as exc:
-                await _fail(str(exc))
-                return
+            finally:
+                await Actor.set_value("RUN_SUMMARY", crawler.summary.to_dict())
+                await save_progress()
 
-        await Actor.set_value("RUN_SUMMARY", summary.to_dict())
         await _finish(summary)
 
 
 async def _finish(summary: Summary) -> None:
     message = summary.status_line()
     Actor.log.info(message)
-    if summary.stop_reason == STOP_UPSTREAM:
+    if summary.failed:
         # Fail loudly so schedules alert the user. What was delivered stays in the dataset and in the state,
-        # so the next run continues from here instead of starting over.
+        # so the next incremental run picks up whatever this one missed.
         await _fail(message)
         return
     Actor.status_message = message  # the SDK posts it as the terminal status message on exit
@@ -90,7 +98,7 @@ def _describe(settings: Settings) -> str:
         parts.append(f"published {settings.date_from}..{settings.date_to}")
     if settings.proposal_deadline_to:
         parts.append(f"proposals closing until {settings.proposal_deadline_to}")
-    for name in ("modalities", "states", "municipalities", "cnpjs", "keywords", "exclude_keywords"):
+    for name in ("modalities", "statuses", "states", "municipalities", "cnpjs", "keywords", "exclude_keywords"):
         if getattr(settings, name):
             parts.append(f"{name}={list(getattr(settings, name))}")
     if settings.min_value is not None or settings.max_value is not None:

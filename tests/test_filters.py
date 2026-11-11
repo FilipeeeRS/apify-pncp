@@ -20,6 +20,19 @@ RECORD = {
 
 def test_fold():
     assert fold("  Licitação  ÓRGÃO ") == "licitacao orgao"
+    assert fold("AR-CONDICIONADO\nSPLIT") == "ar condicionado split"
+
+
+def test_keywords_match_at_word_start_across_hyphens():
+    split = {**RECORD, "object": "Manutenção de AR-CONDICIONADO e realocação de mobiliário"}
+    assert make(keywords=["ar condicionado"]).check(split)[0] is True
+    assert make(excludeKeywords=["locação"]).check(split)[0] is True  # "realocação" is another word
+    assert make(excludeKeywords=["realocação"]).check(split)[0] is False
+
+
+def test_status_filter():
+    assert make(statuses=["1"]).check({**RECORD, "statusCode": 4})[0] is False
+    assert make(statuses=["1"]).check({**RECORD, "statusCode": 1})[0] is True
 
 
 def test_any_keyword_is_enough_and_matches_are_reported_as_typed():

@@ -35,7 +35,11 @@ MODES = (MODE_PUBLISHED, MODE_OPEN)
 DEFAULT_MAX_RESULTS = 20
 DEFAULT_MAX_API_PAGES = 300
 DEFAULT_LAST_DAYS = 1
-DEFAULT_PROPOSAL_HORIZON_DAYS = 365
+DEFAULT_PROPOSAL_HORIZON_DAYS = 3650  # the API accepts far-future dates; a 1-year horizon left out ~0.5% of open tenders
+DEFAULT_MODALITIES = (6, 8)  # same as the input schema default; an explicit empty list means all 13
+# Domain table "Situação da Contratação" (manual, section 5.5).
+STATUSES = {1: "Divulgada no PNCP", 2: "Revogada", 3: "Anulada", 4: "Suspensa"}
+DEFAULT_OPEN_STATUSES = (1,)  # in open mode, suspended/revoked tenders cannot be bid on
 MAX_STREAMS = 200  # modalities x places x agencies: each stream costs at least one paced API call
 
 
@@ -50,6 +54,7 @@ class Settings:
     date_to: date | None
     proposal_deadline_to: date | None  # open-proposals mode: proposals still open, closing up to this date
     modalities: tuple[int, ...]  # empty = all 13
+    statuses: tuple[int, ...]  # empty = any status
     states: tuple[str, ...]
     municipalities: tuple[str, ...]  # IBGE codes
     cnpjs: tuple[str, ...]
@@ -86,7 +91,14 @@ def parse_settings(raw: dict[str, Any] | None, today: date) -> Settings:
         if deadline < today:
             raise InputError(f"'proposalDeadlineTo' ({deadline}) is in the past; the PNCP only accepts today or later.")
 
-    modalities = tuple(dict.fromkeys(_modality(v) for v in _items(raw.get("modalities"), "modalities")))
+    if raw.get("modalities") is None:
+        modalities = DEFAULT_MODALITIES
+    else:
+        modalities = tuple(dict.fromkeys(_modality(v) for v in _items(raw.get("modalities"), "modalities")))
+    if raw.get("statuses") is None:
+        statuses = DEFAULT_OPEN_STATUSES if mode == MODE_OPEN else ()
+    else:
+        statuses = tuple(dict.fromkeys(_status(v) for v in _items(raw.get("statuses"), "statuses")))
     states = tuple(dict.fromkeys(_state(v) for v in _items(raw.get("states"), "states")))
     municipalities = tuple(dict.fromkeys(_ibge(v) for v in _items(raw.get("municipalityIbgeCodes"), "municipalityIbgeCodes")))
     cnpjs = tuple(dict.fromkeys(normalize_cnpj(v) for v in _items(raw.get("agencyCnpjs"), "agencyCnpjs")))
@@ -102,6 +114,7 @@ def parse_settings(raw: dict[str, Any] | None, today: date) -> Settings:
         date_to=date_to,
         proposal_deadline_to=deadline,
         modalities=modalities,
+        statuses=statuses,
         states=states,
         municipalities=municipalities,
         cnpjs=cnpjs,
@@ -217,6 +230,16 @@ def _modality(value: str) -> int:
         raise InputError(f"Unknown modality {value!r}; use the PNCP codes 1 to 13.") from None
     if code not in MODALITIES:
         raise InputError(f"Unknown modality {value!r}; use the PNCP codes 1 to 13.")
+    return code
+
+
+def _status(value: str) -> int:
+    try:
+        code = int(value)
+    except ValueError:
+        code = 0
+    if code not in STATUSES:
+        raise InputError(f"Unknown status {value!r}; use 1 (Divulgada), 2 (Revogada), 3 (Anulada) or 4 (Suspensa).")
     return code
 
 

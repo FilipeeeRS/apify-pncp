@@ -6,6 +6,7 @@ Measured against the live API on 2026-11-10; these facts shape everything below:
   * A WAF answers 429 with an HTML page after a burst: about 7 calls in 10 s at one call per 1.5 s, and the block
     lasted more than 30 s. 30 calls in a row at one call per 2.5 s went through. Hence one call per 3 s.
   * Responses take 0.1 s to 30+ s, and a heavy query can end in HTTP 500 after about a minute.
+  * 403 is retried like 429 (WAF), 408/425 like 5xx; any other unexpected status is a `PncpError`.
   * 400/422 carry a JSON `message` (invalid CNPJ, date in the past...) and are not worth retrying.
 """
 
@@ -99,8 +100,10 @@ class PncpClient:
                     if page is not None:
                         return page
                     kind, reason = "rate", "HTTP 200 without the expected JSON (WAF page?)"
-                elif status == 429:
-                    kind, reason = "rate", "HTTP 429 rate limit"
+                elif status in (403, 429):  # the WAF answers 429, and may answer 403 to a client it distrusts
+                    kind, reason = "rate", f"HTTP {status} (rate limit or WAF block)"
+                elif status in (408, 425):
+                    kind, reason = "server", f"HTTP {status}"
                 elif status >= 500:
                     kind, reason = "server", f"HTTP {status}"
                 elif status in (400, 422):

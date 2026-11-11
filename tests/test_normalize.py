@@ -1,4 +1,4 @@
-from pncp_monitor.normalize import normalize, portal_url, to_iso
+from pncp_monitor.normalize import normalize, portal_url, to_iso, to_url
 from pncp_monitor.privacy import CPF_MASK, RG_MASK
 
 COLLECTED = "2026-11-10T19:00:00Z"
@@ -58,3 +58,16 @@ def test_helpers():
     assert portal_url(None, "94436342000100", 2026, "58") == "https://pncp.gov.br/app/editais/94436342000100/2026/58"
     assert to_iso("2026-11-01T02:14:33.5") == "2026-11-01T02:14:33-03:00"
     assert to_iso("not a date") is None
+
+
+def test_links_typed_by_hand_are_cleaned():
+    assert to_url("https://bll.org.br/x?y=1") == "https://bll.org.br/x?y=1"
+    assert to_url("contratosgov.com.br/edital/123") == "https://contratosgov.com.br/edital/123"
+    assert to_url("www.portal.gov.br") == "https://www.portal.gov.br"
+    assert to_url("Link Não Informado") is None
+    assert to_url("") is None and to_url(None) is None
+
+
+def test_free_text_whitespace_is_collapsed():
+    record = normalize({"numeroControlePNCP": "x", "objetoCompra": "Compra de\r\n  cadeiras   ", "unidadeOrgao": {"nomeUnidade": "SEC.\nSAUDE"}}, COLLECTED)
+    assert record["object"] == "Compra de cadeiras" and record["unitName"] == "SEC. SAUDE"

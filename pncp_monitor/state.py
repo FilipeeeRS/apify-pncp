@@ -29,6 +29,11 @@ class IncrementalState:
         self._groups.setdefault(group, set()).add(item_id)
         self._all.add(item_id)
 
+    def merge(self, other: IncrementalState) -> None:
+        for group, ids in other._groups.items():
+            for item_id in ids:
+                self.add(item_id, group)
+
     def prune(self, keep_from: str) -> None:
         """Forget groups dated before `keep_from` (ISO dates compare as text). Those records can no longer come back."""
         for group in [g for g in self._groups if g < keep_from]:
